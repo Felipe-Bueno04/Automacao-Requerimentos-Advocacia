@@ -1,8 +1,3 @@
 [server]
-<<<<<<< HEAD
 address = "localhost"
 port = 8501
-=======
-port = 8501
-address = "localhost"
->>>>>>> 70db6ba986b2d1ee3d8570a5ffc639bb4558879b
