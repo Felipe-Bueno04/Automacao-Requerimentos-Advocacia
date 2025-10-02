@@ -73,8 +73,6 @@ class AutomatizadorRequerimentosWeb:
 
             st.divider()
 
-            # ... o resto do código permanece igual ...
-
             # Pasta dos Clientes (Drive)
             st.subheader("📂 Pasta dos Clientes (Drive)")
             col1, col2 = st.columns([3, 1])
@@ -108,18 +106,6 @@ class AutomatizadorRequerimentosWeb:
             with col2:
                 if st.button("📁 Selecionar", key="btn_select_processados"):
                     st.info("💡 Digite o caminho ou cole do explorador de arquivos")
-
-            # Botões de ação rápida
-            st.divider()
-            st.write("**⚡ Ações Rápidas:**")
-            col1 = st.columns(2)
-
-            with col1:
-                if st.button("🗑️ Limpar Tudo", key="btn_clear_all"):
-                    st.session_state["pasta_downloads"] = ""
-                    st.session_state["pasta_clientes"] = ""
-                    st.session_state["pasta_processados"] = ""
-                    st.rerun()
 
         # Atualizar session state com os valores atuais
         if pasta_downloads:
