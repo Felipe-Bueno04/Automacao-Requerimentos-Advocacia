@@ -190,6 +190,7 @@ class AutomatizadorRequerimentosWeb:
             return uploaded_files
         return None
 
+
     def save_uploaded_files(self, uploaded_files, pasta_downloads):
         """Salva os arquivos enviados para a pasta de downloads"""
         saved_files = []
@@ -216,7 +217,9 @@ class AutomatizadorRequerimentosWeb:
 
         return saved_files
 
+
     def extract_client_name(self, caminho_pdf):
+        """Extrai nome do cliente do nome do arquivo"""
         """Extrai nome do cliente do nome do arquivo"""
         try:
             nome_arquivo = Path(caminho_pdf).stem
@@ -275,6 +278,7 @@ class AutomatizadorRequerimentosWeb:
                 # Copiar arquivo
                 nome_arquivo = Path(pdf_path).name
                 caminho_destino = os.path.join(caminho_pasta, nome_arquivo)
+                shutil.copy2(pdf_path, caminho_destino)
                 shutil.copy2(pdf_path, caminho_destino)
                 arquivos_organizados += 1
 
