@@ -3,6 +3,8 @@ import os
 import re
 from pathlib import Path
 import shutil
+import tkinter as tk
+from tkinter import filedialog
 
 
 class AutomatizadorRequerimentosWeb:
@@ -25,51 +27,40 @@ class AutomatizadorRequerimentosWeb:
         )
 
     def get_folder_paths(self):
-        """Interface para usuário definir os diretórios com seletores"""
-        st.sidebar.header("📁 Configurações de Pastas")
+        """Interface para usuário definir os diretórios sem sidebar"""
 
-        with st.sidebar.expander("Configurar Diretórios", expanded=True):
-            st.write("**Selecione as pastas no seu computador:**")
+        def select_folder():
+            """Abre diálogo para selecionar pasta (Windows)"""
+            root = tk.Tk()
+            root.withdraw()  # Esconde a janela principal
+            root.attributes("-topmost", True)  # Traz para frente
+            folder_path = filedialog.askdirectory()
+            root.destroy()
+            return folder_path
+
+        # Expander principal
+        with st.expander("📁 CONFIGURAR DIRETÓRIOS", expanded=True):
 
             # Pasta dos PDFs (WhatsApp)
             st.subheader("📥 Pasta dos PDFs (WhatsApp)")
+
             col1, col2 = st.columns([3, 1])
 
             with col1:
+                current_value = st.session_state.get("pasta_downloads", "")
                 pasta_downloads = st.text_input(
-                    "Caminho:",
-                    value=st.session_state.get("pasta_downloads", ""),
-                    help="Selecione a pasta onde estão os PDFs do WhatsApp",
-                    key="pasta_downloads_input_unique",
+                    "Caminho da pasta dos PDFs:",
+                    value=current_value,
+                    key="pasta_downloads_input_main",
+                    placeholder="Ex: C:/Users/SeuNome/Downloads/PDFs",
                 )
 
             with col2:
-                if st.button("📁 Selecionar", key="btn_select_downloads"):
-                    st.session_state["show_folder_help"] = True
-
-            if st.session_state.get("show_folder_help", False):
-                st.info(
-                    """
-                **💡 Como selecionar pasta no navegador:**
-                1. Clique no campo acima
-                2. Digite o caminho manualmente (ex: C:/Users/SeuNome/Documentos)
-                3. Ou copie e cole o caminho do explorador de arquivos
-                """
-                )
-
-            # Mostrar arquivos detectados automaticamente
-            if pasta_downloads and os.path.exists(pasta_downloads):
-                pdf_files = list(Path(pasta_downloads).glob("*.pdf"))
-                if pdf_files:
-                    st.success(f"📄 {len(pdf_files)} arquivo(s) PDF detectado(s)")
-                    # Mostrar alguns arquivos diretamente sem expander
-                    st.write("**Arquivos detectados:**")
-                    for pdf in pdf_files[:5]:  # Mostra até 5 arquivos
-                        st.write(f"• {pdf.name}")
-                    if len(pdf_files) > 5:
-                        st.info(f"... e mais {len(pdf_files) - 5} arquivos")
-                else:
-                    st.warning("⚠️ Nenhum arquivo PDF encontrado nesta pasta")
+                if st.button("📁 Procurar", key="btn_browse_downloads"):
+                    folder = select_folder()
+                    if folder:
+                        st.session_state["pasta_downloads"] = folder
+                        st.rerun()
 
             st.divider()
 
@@ -79,15 +70,19 @@ class AutomatizadorRequerimentosWeb:
 
             with col1:
                 pasta_clientes = st.text_input(
-                    "Caminho:",
+                    "Caminho da pasta dos clientes:",
                     value=st.session_state.get("pasta_clientes", ""),
                     help="Pasta onde serão criadas as pastas dos clientes",
-                    key="pasta_clientes_input_unique",
+                    key="pasta_clientes_input_main",
+                    placeholder="Ex: C:/Users/SeuNome/Documentos/Clientes",
                 )
 
             with col2:
-                if st.button("📁 Selecionar", key="btn_select_clientes"):
-                    st.info("💡 Digite o caminho ou cole do explorador de arquivos")
+                if st.button("📁 Procurar", key="btn_browse_clientes"):
+                    folder = select_folder()
+                    if folder:
+                        st.session_state["pasta_clientes"] = folder
+                        st.rerun()
 
             st.divider()
 
@@ -97,15 +92,42 @@ class AutomatizadorRequerimentosWeb:
 
             with col1:
                 pasta_processados = st.text_input(
-                    "Caminho:",
+                    "Caminho da pasta temporária:",
                     value=st.session_state.get("pasta_processados", ""),
                     help="Pasta para arquivos temporários durante processamento",
-                    key="pasta_processados_input_unique",
+                    key="pasta_processados_input_main",
+                    placeholder="Ex: C:/Users/SeuNome/AppData/Temp/Processamento",
                 )
 
             with col2:
-                if st.button("📁 Selecionar", key="btn_select_processados"):
-                    st.info("💡 Digite o caminho ou cole do explorador de arquivos")
+                if st.button("📁 Procurar", key="btn_browse_processados"):
+                    folder = select_folder()
+                    if folder:
+                        st.session_state["pasta_processados"] = folder
+                        st.rerun()
+
+            # Botões de ação rápida
+            st.divider()
+            st.write("**⚡ Ações Rápidas:**")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("🗑️ Limpar Tudo", key="btn_clear_main"):
+                    st.session_state["pasta_downloads"] = ""
+                    st.session_state["pasta_clientes"] = ""
+                    st.session_state["pasta_processados"] = ""
+                    st.rerun()
+
+            with col2:
+                if st.button("💡 Ajuda", key="btn_help_main"):
+                    st.info(
+                        """
+                    **Como usar:**
+                    1. Clique em **📁 Procurar** para selecionar pastas
+                    2. Ou digite os caminhos manualmente
+                    3. Use **🔄 Pastas Padrão** para caminhos rápidos
+                    """
+                    )
 
         # Atualizar session state com os valores atuais
         if pasta_downloads:
@@ -176,7 +198,6 @@ class AutomatizadorRequerimentosWeb:
             return uploaded_files
         return None
 
-
     def save_uploaded_files(self, uploaded_files, pasta_downloads):
         """Salva os arquivos enviados para a pasta de downloads"""
         saved_files = []
@@ -202,7 +223,6 @@ class AutomatizadorRequerimentosWeb:
                 st.error(f"❌ Erro ao salvar {uploaded_file.name}: {e}")
 
         return saved_files
-
 
     def extract_client_name(self, caminho_pdf):
         """Extrai nome do cliente do nome do arquivo"""
@@ -281,40 +301,6 @@ class AutomatizadorRequerimentosWeb:
                 progress_bar.progress((i + 1) / total_files)
 
         return pastas_criadas, arquivos_organizados
-
-    def show_folder_structure(self):
-        """Mostra a estrutura de pastas atual"""
-        st.sidebar.header("📊 Estrutura de Pastas")
-
-        pasta_downloads = st.session_state.get("pasta_downloads", "")
-        pasta_clientes = st.session_state.get("pasta_clientes", "")
-        pasta_processados = st.session_state.get("pasta_processados", "")
-
-        if st.sidebar.button(
-            "🔄 Atualizar Visualização",
-            use_container_width=True,
-            key="btn_refresh_view",
-        ):
-            try:
-                downloads_count = 0
-                clientes_count = 0
-
-                if pasta_downloads and os.path.exists(pasta_downloads):
-                    downloads_count = len(list(Path(pasta_downloads).glob("*.pdf")))
-
-                if pasta_clientes and os.path.exists(pasta_clientes):
-                    clientes_count = len(
-                        [f for f in Path(pasta_clientes).iterdir() if f.is_dir()]
-                    )
-
-                col1, col2 = st.sidebar.columns(2)
-                with col1:
-                    st.metric("📥 PDFs para Processar", downloads_count)
-                with col2:
-                    st.metric("📁 Pastas de Clientes", clientes_count)
-
-            except Exception as e:
-                st.sidebar.error(f"Erro: {e}")
 
     def run_automation(self):
         """Função principal que executa toda a automação"""
@@ -399,9 +385,6 @@ def main():
         st.session_state["show_folder_help"] = False
 
     app = AutomatizadorRequerimentosWeb()
-
-    # Mostrar estrutura de pastas
-    app.show_folder_structure()
 
     # Executar automação
     app.run_automation()
