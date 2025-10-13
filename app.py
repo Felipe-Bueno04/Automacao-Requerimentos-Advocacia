@@ -3,8 +3,7 @@ import os
 import re
 from pathlib import Path
 import shutil
-import tkinter as tk
-from tkinter import filedialog
+import PyPDF2
 
 
 class AutomatizadorRequerimentosWeb:
@@ -29,15 +28,6 @@ class AutomatizadorRequerimentosWeb:
     def get_folder_paths(self):
         """Interface para usuário definir os diretórios sem sidebar"""
 
-        def select_folder():
-            """Abre diálogo para selecionar pasta (Windows)"""
-            root = tk.Tk()
-            root.withdraw()  # Esconde a janela principal
-            root.attributes("-topmost", True)  # Traz para frente
-            folder_path = filedialog.askdirectory()
-            root.destroy()
-            return folder_path
-
         # Expander principal
         with st.expander("📁 CONFIGURAR DIRETÓRIOS", expanded=True):
 
@@ -57,10 +47,7 @@ class AutomatizadorRequerimentosWeb:
 
             with col2:
                 if st.button("📁 Procurar", key="btn_browse_downloads"):
-                    folder = select_folder()
-                    if folder:
-                        st.session_state["pasta_downloads"] = folder
-                        st.rerun()
+                    st.info("💡 Digite o caminho manualmente ou use pastas padrão")
 
             st.divider()
 
@@ -79,10 +66,7 @@ class AutomatizadorRequerimentosWeb:
 
             with col2:
                 if st.button("📁 Procurar", key="btn_browse_clientes"):
-                    folder = select_folder()
-                    if folder:
-                        st.session_state["pasta_clientes"] = folder
-                        st.rerun()
+                    st.info("💡 Digite o caminho manualmente ou use pastas padrão")
 
             st.divider()
 
@@ -101,10 +85,7 @@ class AutomatizadorRequerimentosWeb:
 
             with col2:
                 if st.button("📁 Procurar", key="btn_browse_processados"):
-                    folder = select_folder()
-                    if folder:
-                        st.session_state["pasta_processados"] = folder
-                        st.rerun()
+                    st.info("💡 Digite o caminho manualmente ou use pastas padrão")
 
             # Botões de ação rápida
             st.divider()
@@ -123,9 +104,8 @@ class AutomatizadorRequerimentosWeb:
                     st.info(
                         """
                     **Como usar:**
-                    1. Clique em **📁 Procurar** para selecionar pastas
-                    2. Ou digite os caminhos manualmente
-                    3. Use **🔄 Pastas Padrão** para caminhos rápidos
+                    1. Copie e cole os caminhos manualmente
+                    2. Faça upload dos PDFs na seção abaixo
                     """
                     )
 
@@ -138,6 +118,210 @@ class AutomatizadorRequerimentosWeb:
             st.session_state["pasta_processados"] = pasta_processados
 
         return pasta_downloads, pasta_clientes, pasta_processados
+
+    def extract_text_from_page(self, pdf_reader, page_num):
+        """Extrai texto de uma página específica"""
+        try:
+            page = pdf_reader.pages[page_num]
+            return page.extract_text()
+        except:
+            return ""
+
+    def identify_document_type(self, text):
+        """Identifica o tipo de documento baseado no conteúdo textual"""
+        text = text.upper()
+
+        # Padrões para identificar cada tipo de documento
+        patterns = {
+            "RG_CPF": [
+                r"CARTEIRA DE IDENTIDADE",
+                r"REGISTRO GERAL",
+                r"SECRETARIA DE SEGURANÇA PÚBLICA",
+                r"INSTITUTO DE IDENTIFICAÇÃO",
+                r"CPF.*\d{3}\.\d{3}\.\d{3}-\d{2}",
+                r"IDENTIDADE",
+            ],
+            "CERTIDAO_NASCIMENTO": [
+                r"CERTIDÃO DE NASCIMENTO",
+                r"REGISTRO CIVIL DAS PESSOAS NATURAIS",
+                r"NASCI.*EM",
+                r"FILIAÇÃO",
+                r"AVOS",
+            ],
+            "COMPROVANTE_RESIDENCIA": [
+                r"CONTA DE.*LUZ",
+                r"CONTA DE.*ÁGUA",
+                r"CONTA DE.*ENERGIA",
+                r"COMPROVANTE DE RESIDÊNCIA",
+                r"ENDEREÇO",
+                r"CEP.*\d{5}-\d{3}",
+            ],
+            "TERMO_REPRESENTACAO": [
+                r"TERMO DE REPRESENTAÇÃO",
+                r"AUTORIZAÇÃO DE ACESSO A INFORMAÇÕES PREVIDENCIÁRIAS",
+                r"INFORMAÇÕES PREVIDENCIÁRIAS",
+                r"INSS",
+                r"PREVIDENCIÁRIO",
+            ],
+            "PROCURACAO": [r"PROCURAÇÃO", r"OUTORGANTE", r"OUTORGADO", r"PODERES"],
+            "CONTRATO_ADVOCATICIOS": [
+                r"CONTRATO DE PRESTAÇÃO DE SERVIÇOS ADVOCATÍCIOS",
+                r"HONORÁRIOS",
+                r"CLÁUSULA",
+                r"CONTRATANTE",
+            ],
+        }
+
+        for doc_type, pattern_list in patterns.items():
+            for pattern in pattern_list:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return doc_type
+
+        return "DESCONHECIDO"
+
+    def analyze_pdf_structure(self, input_pdf):
+        """Analisa a estrutura do PDF e identifica onde está cada documento - VERSÃO DEBUG"""
+        try:
+            pdf_reader = PyPDF2.PdfReader(input_pdf)
+            document_map = {}
+
+            st.write(
+                f"🔍 Analisando {Path(input_pdf).name} ({len(pdf_reader.pages)} páginas)"
+            )
+
+            for page_num in range(len(pdf_reader.pages)):
+                text = self.extract_text_from_page(pdf_reader, page_num)
+
+                # Mostrar um preview do texto para debug
+                if len(text) > 0:
+                    preview = text[:100].replace("\n", " ")  # Primeiros 100 caracteres
+                    st.write(f"   Página {page_num + 1}: '{preview}...'")
+
+                doc_type = self.identify_document_type(text)
+
+                if doc_type != "DESCONHECIDO":
+                    if doc_type not in document_map:
+                        document_map[doc_type] = []
+                    document_map[doc_type].append(page_num + 1)
+                    st.write(
+                        f"   ✅ Página {page_num + 1} identificada como: {doc_type}"
+                    )
+
+            return document_map, pdf_reader
+        except Exception as e:
+            st.error(f"❌ Erro ao analisar PDF {Path(input_pdf).name}: {e}")
+            return {}, None
+
+    def extract_specific_pages(self, pdf_reader, output_pdf, page_numbers):
+        """
+        Extrai páginas específicas de um PDF e salva em um novo arquivo
+        """
+        try:
+            pdf_writer = PyPDF2.PdfWriter()
+
+            for page_num in page_numbers:
+                # Ajusta para índice base 0
+                page = pdf_reader.pages[page_num - 1]
+                pdf_writer.add_page(page)
+
+            # Garantir que o arquivo seja salvo como PDF mesmo sem extensão
+            if not output_pdf.lower().endswith(".pdf"):
+                output_pdf += ".pdf"
+
+            with open(output_pdf, "wb") as output_file:
+                pdf_writer.write(output_file)
+            return True
+        except Exception as e:
+            st.error(f"❌ Erro ao extrair páginas {page_numbers}: {e}")
+            return False
+
+    def extract_main_documents_structured(self, input_pdf, output_folder):
+        """
+        Extrai APENAS os 4 documentos principais especificados
+        """
+        try:
+            pdf_reader = PyPDF2.PdfReader(input_pdf)
+
+            documentos_principais = {
+                "RG_CPF": [1, 2],  # RG da mãe
+                "CERTIDAO_NASCIMENTO": [6],  # Certidão de Nascimento
+                "COMPROVANTE_RESIDENCIA": [9],  # Comprovante de residência
+                "TERMO_REPRESENTACAO_INSS": [11],  # Termo de Representação
+            }
+
+            # Extrair cada documento principal DIRETAMENTE na pasta do cliente
+            documentos_extraidos = 0
+            for doc_name, paginas in documentos_principais.items():
+                output_pdf = os.path.join(output_folder, doc_name)  # SEM .pdf no final
+                if self.extract_specific_pages(pdf_reader, output_pdf, paginas):
+                    documentos_extraidos += 1
+                    st.success(f"   ✅ {doc_name} extraído")
+
+            return documentos_extraidos
+
+        except Exception as e:
+            st.error(f"❌ Erro na extração estruturada: {e}")
+            return 0
+
+    def process_pdf_analysis(self, pdf_files, pasta_clientes):
+        """Processa a análise e organização dos PDFs - APENAS DOCUMENTOS PRINCIPAIS"""
+        if not pdf_files:
+            return 0, 0
+
+        st.header("🔍 Analisando e Organizando Documentos")
+
+        progress_bar = st.progress(0)
+        total_files = len(pdf_files)
+
+        pastas_criadas = 0
+        arquivos_organizados = 0
+
+        for i, pdf_path in enumerate(pdf_files):
+            try:
+                # Extrair nome do cliente COMPLETO
+                nome_cliente = self.extract_client_name(pdf_path)
+                nome_pasta = re.sub(r'[<>:"/\\|?*]', "", nome_cliente).strip()
+                caminho_pasta = os.path.join(pasta_clientes, nome_pasta)
+
+                # Criar pasta do cliente se não existir
+                pasta_nova = False
+                if not os.path.exists(caminho_pasta):
+                    os.makedirs(caminho_pasta)
+                    pasta_nova = True
+                    pastas_criadas += 1
+
+                # EXTRAIR APENAS OS DOCUMENTOS PRINCIPAIS
+                st.info(
+                    f"📊 Processando {Path(pdf_path).name} - Extração dos Documentos Principais"
+                )
+
+                documentos_extraidos = self.extract_main_documents_structured(
+                    pdf_path, caminho_pasta
+                )
+
+                if documentos_extraidos > 0:
+                    st.success(
+                        f"   ✅ {documentos_extraidos} documento(s) principal(is) extraído(s)"
+                    )
+
+                # SEMPRE copiar o PDF original SEM extensão .pdf
+                nome_arquivo = Path(pdf_path).stem.upper()  # MAIÚSCULAS e sem .pdf
+                caminho_destino = os.path.join(caminho_pasta, nome_arquivo)
+                shutil.copy2(pdf_path, caminho_destino)
+
+                st.success(
+                    f"📁 {Path(pdf_path).name} → {nome_pasta}/ ({documentos_extraidos} documentos extraídos + original)"
+                )
+                arquivos_organizados += documentos_extraidos + 1  # +1 para o original
+
+            except Exception as e:
+                st.error(f"❌ Erro ao processar {pdf_path}: {e}")
+
+            # Atualizar barra de progresso
+            if total_files > 0:
+                progress_bar.progress((i + 1) / total_files)
+
+        return pastas_criadas, arquivos_organizados
 
     def get_pdf_files_from_folder(self, pasta_downloads):
         """Obtém lista de arquivos PDF da pasta especificada"""
@@ -226,81 +410,42 @@ class AutomatizadorRequerimentosWeb:
 
     def extract_client_name(self, caminho_pdf):
         """Extrai nome do cliente do nome do arquivo"""
-        """Extrai nome do cliente do nome do arquivo"""
         try:
             nome_arquivo = Path(caminho_pdf).stem
-            # Remove sufixos comuns
+
+            # Remove números e caracteres especiais, mas mantém espaços
             nome_limpo = re.sub(r"[_-]", " ", nome_arquivo)
+            nome_limpo = re.sub(r"\d+", "", nome_limpo)  # Remove números
+            nome_limpo = re.sub(
+                r"\.pdf$", "", nome_limpo, flags=re.IGNORECASE
+            )  # Remove .pdf se houver
 
-            # Tenta capitalizar como nome próprio
-            palavras = nome_limpo.split()
-            if len(palavras) >= 2:
-                nome_cliente = " ".join(palavras[:2]).title()
+            # Remove APENAS palavras que realmente não são parte do nome
+            palavras_remover = [
+                "documentos",
+                "requerimento",
+                "procuração",
+                "contrato",
+                "pdf",
+                "copia",
+            ]
+            palavras = [
+                palavra
+                for palavra in nome_limpo.split()
+                if palavra.lower() not in palavras_remover
+            ]
+
+            # NÃO remove palavras pequenas como "de", "da", "do" - são parte do nome!
+            # Junta TODAS as palavras para manter nome completo
+            if palavras:
+                nome_cliente = " ".join(palavras).title()
+                return nome_cliente
             else:
-                nome_cliente = nome_limpo.title()
+                return nome_limpo.title()
 
-            return nome_cliente
-        except:
-            return Path(caminho_pdf).stem
-
-    def organize_files(self, pdf_files, pasta_clientes):
-        """Organiza os arquivos em pastas por cliente"""
-        st.header("📁 Organizando Pastas dos Clientes")
-
-        if not pasta_clientes:
-            st.error("❌ Por favor, selecione uma pasta para os clientes primeiro")
-            return 0, 0
-
-        try:
-            if not os.path.exists(pasta_clientes):
-                os.makedirs(pasta_clientes)
-                st.info(f"📁 Pasta criada: {pasta_clientes}")
         except Exception as e:
-            st.error(f"❌ Erro ao criar pasta {pasta_clientes}: {e}")
-            return 0, 0
-
-        progress_bar = st.progress(0)
-        total_files = len(pdf_files)
-
-        pastas_criadas = 0
-        arquivos_organizados = 0
-
-        for i, pdf_path in enumerate(pdf_files):
-            try:
-                # Extrair nome do cliente
-                nome_cliente = self.extract_client_name(pdf_path)
-
-                # Limpar nome para pasta
-                nome_pasta = re.sub(r'[<>:"/\\|?*]', "", nome_cliente).strip()
-                caminho_pasta = os.path.join(pasta_clientes, nome_pasta)
-
-                # Criar pasta se não existir
-                pasta_nova = False
-                if not os.path.exists(caminho_pasta):
-                    os.makedirs(caminho_pasta)
-                    pasta_nova = True
-                    pastas_criadas += 1
-
-                # Copiar arquivo
-                nome_arquivo = Path(pdf_path).name
-                caminho_destino = os.path.join(caminho_pasta, nome_arquivo)
-                shutil.copy2(pdf_path, caminho_destino)
-                shutil.copy2(pdf_path, caminho_destino)
-                arquivos_organizados += 1
-
-                if pasta_nova:
-                    st.success(f"📁 {nome_arquivo} → 🆕 {nome_pasta}/")
-                else:
-                    st.success(f"📄 {nome_arquivo} → {nome_pasta}/")
-
-            except Exception as e:
-                st.error(f"❌ Erro ao organizar {pdf_path}: {e}")
-
-            # Atualizar barra de progresso
-            if total_files > 0:
-                progress_bar.progress((i + 1) / total_files)
-
-        return pastas_criadas, arquivos_organizados
+            st.warning(f"⚠️ Usando nome do arquivo: {e}")
+            return Path(caminho_pdf).stem
 
     def run_automation(self):
         """Função principal que executa toda a automação"""
@@ -332,7 +477,7 @@ class AutomatizadorRequerimentosWeb:
             )
 
         if st.button(
-            "▶️ EXECUTAR ORGANIZAÇÃO DE ARQUIVOS",
+            "▶️ EXECUTAR ORGANIZAÇÃO INTELIGENTE DE DOCUMENTOS",
             type="primary",
             use_container_width=True,
             key="btn_run_automation",
@@ -349,8 +494,8 @@ class AutomatizadorRequerimentosWeb:
                 st.warning("⚠️ Nenhum arquivo PDF encontrado para processar")
                 return
 
-            # Organizar arquivos
-            pastas_criadas, arquivos_organizados = self.organize_files(
+            # Processar com análise inteligente
+            pastas_criadas, arquivos_organizados = self.process_pdf_analysis(
                 all_files_to_process, pasta_clientes
             )
 
@@ -359,15 +504,18 @@ class AutomatizadorRequerimentosWeb:
                 st.balloons()
                 st.success(
                     f"""
-                🎉 **Organização Concluída com Sucesso!**
+                🎉 **Organização Inteligente Concluída com Sucesso!**
 
                 **📊 Resumo:**
                 - 📄 {len(all_files_to_process)} arquivo(s) processado(s)
                 - 📁 {pastas_criadas} nova(s) pasta(s) de cliente(s) criada(s)
                 - ✅ {arquivos_organizados} arquivo(s) organizado(s)
+                - 🔍 Documentos classificados automaticamente
 
                 **📍 Localização:**
                 - Pastas organizadas em: `{pasta_clientes}`
+                - Cada pasta contém documentos separados por tipo
+                - Documentos principais extraídos em subpasta 'documentos_extraidos'
                 """
                 )
 
@@ -393,25 +541,32 @@ def main():
     with st.expander("📋 Instruções de Uso", expanded=False):
         st.markdown(
             """
-        **🌐 COMO USAR - MODO AUTOMÁTICO:**
+        **🌐 COMO USAR - MODO INTELIGENTE:**
 
-        1. **📁 Configurar Pastas** (barra lateral):
-           - **Pasta dos PDFs**: Selecione a pasta onde estão os PDFs do WhatsApp
-           - **Pasta dos Clientes**: Selecione onde criar as pastas organizadas
-           - O sistema detecta automaticamente os PDFs disponíveis
+        1. **📁 Configurar Pastas**:
+           - **Pasta dos PDFs**: Digite o caminho onde estão os PDFs
+           - **Pasta dos Clientes**: Digite onde criar as pastas organizadas
+           - Use **🔄 Pastas Padrão** para nomes simples
 
-        2. **🚀 Executar Organização**:
-           - Clique em **EXECUTAR ORGANIZAÇÃO DE ARQUIVOS**
-           - Os PDFs serão automaticamente organizados em pastas por cliente
+        2. **📤 Upload de Arquivos**:
+           - O sistema detecta automaticamente os PDFs na pasta
+           - Ou use upload manual para arquivos específicos
 
-        **📤 Upload Manual (Opcional):**
-        - Use apenas se quiser adicionar arquivos específicos
-        - Os arquivos enviados serão copiados para a pasta dos PDFs
+        3. **🚀 Executar Organização Inteligente**:
+           - Clique em **EXECUTAR ORGANIZAÇÃO INTELIGENTE DE DOCUMENTOS**
+           - O sistema analisa e classifica automaticamente os documentos:
+             - 📄 RG/CPF da mãe (páginas 1-2)
+             - 📄 Certidão de Nascimento (página 6)  
+             - 📄 Comprovante de Residência (página 9)
+             - 📄 Termo de Representação (página 11)
+             - 📄 Outros documentos automaticamente identificados
 
-        **⚡ Dicas:**
-        - Os nomes dos clientes são extraídos automaticamente dos nomes dos arquivos
-        - Use **🔄 Atualizar Visualização** para ver estatísticas atualizadas
-        - O botão de execução só fica ativo quando há arquivos para processar
+        **⚡ Funcionalidades Inteligentes:**
+        - Extração estruturada dos documentos principais
+        - Classificação automática de documentos adicionais
+        - Organização em pastas por cliente
+        - Subpasta 'documentos_extraidos' com documentos principais
+        - Mantém estrutura original quando necessário
         """
         )
 
